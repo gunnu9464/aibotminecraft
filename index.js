@@ -12,6 +12,7 @@ const Vec3 = require('vec3').Vec3; // Import Vec3 for vector operations
 const SERVER_HOST = 'Nerddddsmp.aternos.me'; // Your Aternos server IP
 const SERVER_PORT = 25565; // Default Minecraft port, usually works for Aternos
 const BOT_USERNAME = 'AIBot'; // The username your bot will appear as in Minecraft
+const SERVER_VERSION = 'false'; // <<< IMPORTANT: REPLACE WITH YOUR EXACT ATERNOS SERVER VERSION (e.g., '1.20.1', '1.19.4')
 
 // Gemini AI API Key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -39,14 +40,14 @@ server.listen(RENDER_PORT, () => {
 
 // --- Bot Creation and Connection Logic ---
 function createBot() {
-    console.log(`Attempting to connect to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_USERNAME}...`);
+    console.log(`Attempting to connect to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_USERNAME} (Minecraft v${SERVER_VERSION})...`);
 
     bot = mineflayer.createBot({
         host: SERVER_HOST,
         port: SERVER_PORT,
         username: BOT_USERNAME,
         // password: 'your_password_if_needed', // Uncomment and set if your server is online-mode and requires a password
-        version: false, // Auto-detect server version
+        version: SERVER_VERSION, // <<< IMPORTANT: Using explicit server version
         hideErrors: false, // Set to true to hide some common errors in console
     });
 
@@ -125,6 +126,10 @@ function createBot() {
     // When an error occurs
     bot.on('error', (err) => {
         console.error(`Bot error: ${err}`);
+        // If the error is a PartialReadError, log more context but still attempt reconnect
+        if (err.name === 'PartialReadError') {
+            console.error('PartialReadError suggests a server version mismatch or malformed packet. Ensure SERVER_VERSION is correct!');
+        }
         stopWandering(); // Stop movement before reconnecting
         reconnect();
     });
@@ -162,6 +167,19 @@ function startWandering() {
     movementInterval = setInterval(() => {
         // Only attempt to set a new goal if the bot exists, is spawned, and not already moving
         if (bot && bot.entity && bot.pathfinder && !bot.pathfinder.isMoving()) {
+            // Randomly decide to jump or sneak
+            const action = Math.random();
+            if (action < 0.3) { // 30% chance to jump
+                console.log('Bot is jumping...');
+                bot.setControlState('jump', true);
+                setTimeout(() => bot.setControlState('jump', false), 500); // Jump for 0.5 seconds
+            } else if (action < 0.6) { // 30% chance to sneak
+                console.log('Bot is sneaking...');
+                bot.setControlState('sneak', true);
+                setTimeout(() => bot.setControlState('sneak', false), 1000); // Sneak for 1 second
+            }
+
+            // Pathfinding movement (still preferred for actual navigation)
             // Generate a random target position within a reasonable range
             const randomOffsetX = (Math.random() - 0.5) * 20; // -10 to +10 blocks
             const randomOffsetZ = (Math.random() - 0.5) * 20; // -10 to +10 blocks
@@ -184,7 +202,7 @@ function startWandering() {
         } else {
             console.log('Bot not ready to wander.');
         }
-    }, 15000); // Attempt to move every 15 seconds
+    }, 15000); // Attempt to move and perform actions every 15 seconds
     console.log('Started wandering.');
 }
 
