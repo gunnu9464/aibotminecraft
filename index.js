@@ -9,8 +9,8 @@ const http = require('http'); // Import Node.js http module for web server
 // --- Configuration ---
 // Your Aternos server IP and bot username
 const SERVER_HOST = 'Nerddddsmp.aternos.me'; // Your Aternos server IP
-const SERVER_PORT = 25565; // Default Minecraft port, usually works for Aternos
-const BOT_USERNAME = 'AIBot'; // The username your bot will appear as in Minecraft
+const SERVER_PORT = 57453; // Default Minecraft port, usually works for Aternos
+const BOT_USERNAME = 'AI'; // The username your bot will appear as in Minecraft
 
 // Gemini AI API Key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
