@@ -5,12 +5,13 @@ const { GoalNear } = goals;
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config(); // Load environment variables from .env file
 const http = require('http'); // Import Node.js http module for web server
+const Vec3 = require('vec3').Vec3; // Import Vec3 for vector operations
 
 // --- Configuration ---
 // Your Aternos server IP and bot username
 const SERVER_HOST = 'Nerddddsmp.aternos.me'; // Your Aternos server IP
-const SERVER_PORT = 57453; // Default Minecraft port, usually works for Aternos
-const BOT_USERNAME = 'AI'; // The username your bot will appear as in Minecraft
+const SERVER_PORT = 25565; // Default Minecraft port, usually works for Aternos
+const BOT_USERNAME = 'AIBot'; // The username your bot will appear as in Minecraft
 
 // Gemini AI API Key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -171,7 +172,7 @@ function startWandering() {
 
             // Try to find a valid block near the target Y-level
             const targetBlock = bot.world.getBlock(new Vec3(Math.floor(targetX), Math.floor(targetY), Math.floor(targetZ)));
-            if (targetBlock && targetBlock. walkable) { // Check if the block is walkable
+            if (targetBlock && targetBlock.walkable) { // Check if the block is walkable
                 console.log(`Setting new wandering goal to: (${Math.floor(targetX)}, ${Math.floor(targetY)}, ${Math.floor(targetZ)})`);
                 // Set the goal for the pathfinder. Range of 2 means it will try to get within 2 blocks of the target.
                 bot.pathfinder.setGoal(new GoalNear(Math.floor(targetX), Math.floor(targetY), Math.floor(targetZ), 2));
@@ -189,7 +190,3 @@ function startWandering() {
 
 // Start the bot for the first time
 createBot();
-
-
-
-
