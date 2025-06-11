@@ -22,7 +22,8 @@ const RENDER_PORT = process.env.PORT || 3000; // Use port provided by Render, or
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+// --- CHANGE MADE HERE: Model updated to gemini-2.5-flash ---
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 // Bot instance (will be reassigned on reconnect)
 let bot;
