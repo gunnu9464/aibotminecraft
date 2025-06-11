@@ -1,141 +1,148 @@
-// index.js
-// This is the main file for the Aternos AI Bot.
+// Import necessary modules
+const mineflayer = require('mineflayer');
+const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
+const { GoalNear } = goals;
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+require('dotenv').config(); // Load environment variables from .env file
 
-// --- Imports ---
-// 'mineflayer' is the library that lets us create Minecraft bots
-import mineflayer from 'mineflayer';
-// 'pathfinder' is a mineflayer plugin for movement and navigation
-import { pathfinder, Movements } from 'mineflayer-pathfinder';
-import { GoalFollow } from 'mineflayer-pathfinder/lib/goals.js';
-// Google's Generative AI for the chat functionality
-import { GoogleGenerativeAI } from '@google/generative-ai';
-// Your personal configuration
-import { config } from './config.js';
+// --- Configuration ---
+// Your Aternos server IP and bot username
+const SERVER_HOST = 'Nerddddsmp.aternos.me'; // Your Aternos server IP
+const SERVER_PORT = 25565; // Default Minecraft port, usually works for Aternos
+const BOT_USERNAME = 'AI'; // The username your bot will appear as in Minecraft
 
-// --- Initial Checks ---
-if (config.geminiApiKey === "PASTE_YOUR_GEMINI_API_KEY_HERE") {
-    console.error("ERROR: Please paste your Gemini API Key into the 'config.js' file.");
-    process.exit(1); // Exit the script
+// Gemini AI API Key
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+// Initialize Gemini AI
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+// Bot instance (will be reassigned on reconnect)
+let bot;
+let movementInterval; // To control the bot's wandering
+
+// --- Bot Creation and Connection Logic ---
+function createBot() {
+    console.log(`Attempting to connect to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_USERNAME}...`);
+
+    bot = mineflayer.createBot({
+        host: SERVER_HOST,
+        port: SERVER_PORT,
+        username: BOT_USERNAME,
+        // password: 'your_password_if_needed', // Uncomment and set if your server is online-mode and requires a password
+        version: false, // Auto-detect server version
+        hideErrors: false, // Set to true to hide some common errors in console
+    });
+
+    // Load the pathfinder plugin
+    bot.loadPlugin(pathfinder);
+
+    // --- Event Handlers ---
+
+    // When the bot successfully logs in
+    bot.on('login', () => {
+        console.log(`${BOT_USERNAME} logged in.`);
+        bot.chat('Hello, world! I am your AI bot, ready to assist. Type !ai <your_question> to chat with me.');
+    });
+
+    // When the bot spawns in the world
+    bot.on('spawn', () => {
+        console.log(`${BOT_USERNAME} spawned.`);
+        // Set up default movements for pathfinding
+        const defaultMove = new Movements(bot);
+        bot.pathfinder.setMovements(defaultMove);
+
+        // Start wandering
+        startWandering();
+    });
+
+    // When a player sends a chat message
+    bot.on('chat', async (username, message) => {
+        // Ignore messages from the bot itself
+        if (username === bot.username) return;
+
+        console.log(`[${username}] ${message}`);
+
+        // Handle AI chat command
+        if (message.startsWith('!ai ')) {
+            const prompt = message.substring(4).trim(); // Get the text after "!ai "
+            if (prompt) {
+                try {
+                    // Send prompt to Gemini AI
+                    bot.chat(`Thinking about "${prompt}"...`);
+                    const result = await model.generateContent(prompt);
+                    const response = await result.response;
+                    const text = response.text();
+
+                    // Send AI response back to chat
+                    bot.chat(`${username}, AI says: ${text}`);
+                } catch (error) {
+                    console.error('Error calling Gemini AI:', error);
+                    bot.chat(`${username}, I'm sorry, I encountered an error while processing your request.`);
+                }
+            } else {
+                bot.chat(`${username}, please provide a question after !ai, e.g., !ai Tell me a joke.`);
+            }
+        }
+    });
+
+    // When the bot is kicked from the server
+    bot.on('kicked', (reason, loggedIn) => {
+        console.log(`Kicked from server: ${reason} (Logged In: ${loggedIn})`);
+        reconnect();
+    });
+
+    // When the bot disconnects (e.g., server stops, network issue)
+    bot.on('end', (reason) => {
+        console.log(`Disconnected from server: ${reason}`);
+        reconnect();
+    });
+
+    // When an error occurs
+    bot.on('error', (err) => {
+        console.error(`Bot error: ${err}`);
+        reconnect();
+    });
 }
 
-// --- Setup AI ---
-const genAI = new GoogleGenerativeAI(config.geminiApiKey);
-const aiModel = genAI.getGenerativeModel({ model: "gemini-flash" });
-const chatHistory = [
-    // Start the conversation with the system prompt
-    { role: "user", parts: [{ text: config.aiSystemPrompt }] },
-    { role: "model", parts: [{ text: "Okay, I understand. I am a friendly Minecraft player named AIBot. I will keep my answers short and conversational." }] },
-];
+// --- Reconnection Logic ---
+function reconnect() {
+    // Clear any existing movement intervals to prevent multiple instances
+    if (movementInterval) {
+        clearInterval(movementInterval);
+        movementInterval = null;
+    }
+    // Set a timeout before attempting to reconnect
+    console.log('Attempting to reconnect in 5 seconds...');
+    setTimeout(createBot, 5000);
+}
 
-console.log("🤖 AI Bot is starting up...");
+// --- Automatic Movement Logic ---
+function startWandering() {
+    // Clear any previous wandering interval
+    if (movementInterval) {
+        clearInterval(movementInterval);
+    }
 
-// --- Create the Bot ---
-const bot = mineflayer.createBot({
-    host: config.host,
-    port: config.port,
-    username: config.username,
-    version: config.version,
-    // This setting tells the server we are not using a paid "premium" account.
-    // Required for "Cracked" / Offline-mode servers like a configured Aternos server.
-    auth: 'offline', 
-});
-
-// --- Load Plugins ---
-// Load the pathfinder plugin so the bot can move
-bot.loadPlugin(pathfinder);
-console.log("🔌 Pathfinder plugin loaded.");
-
-// --- Bot Event Listeners ---
-
-// This runs once the bot has successfully joined the server
-bot.once('spawn', () => {
-    console.log(`✅ Bot '${bot.username}' has joined the server.`);
-    
-    // Set up pathfinder movements
-    const mcData = await bot.waitFordatavalue('mcData')
-    const defaultMove = new Movements(bot, mcData);
-    bot.pathfinder.setMovements(defaultMove);
-    
-    // Announce arrival
-    bot.chat("Hello everyone! The AI Bot is online.");
-
-    // Start "alive" behavior
-    setInterval(lookAround, 5000); // Look around every 5 seconds
-});
-
-// This runs every time a chat message appears
-bot.on('chat', async (username, message) => {
-    // Ignore messages from the bot itself
-    if (username === bot.username) return;
-
-    console.log(`[Chat] ${username}: ${message}`);
-
-    // --- Command Handling ---
-    if (message.toLowerCase() === 'follow me') {
-        const player = bot.players[username];
-        if (!player || !player.entity) {
-            bot.chat(`Sorry ${username}, I can't see you.`);
+    movementInterval = setInterval(() => {
+        // If the bot is not yet spawned or already pathfinding, skip
+        if (!bot || !bot.entity || bot.pathfinder.is == null) {
+            // Check if pathfinder is ready before setting a goal
+            console.log('Bot not spawned or pathfinder not ready for wandering.');
             return;
         }
-        bot.chat(`Okay, ${username}, I'm following you now.`);
-        // Set a goal to follow the player who spoke
-        bot.pathfinder.setGoal(new GoalFollow(player.entity, 1), true);
-        return;
-    }
 
-    if (message.toLowerCase() === 'stop') {
-        bot.chat('Okay, I am stopping.');
-        // Clear all current pathfinder goals
-        bot.pathfinder.stop();
-        return;
-    }
+        const x = bot.entity.position.x + (Math.random() - 0.5) * 32; // Random X within 32 blocks
+        const z = bot.entity.position.z + (Math.random() - 0.5) * 32; // Random Z within 32 blocks
+        const y = bot.entity.position.y; // Keep Y-level mostly the same for simple wandering
 
-    // --- AI Chat Handling ---
-    // Check if the message is directed at the bot
-    if (message.toLowerCase().startsWith(bot.username.toLowerCase())) {
-        const question = message.substring(bot.username.length).trim();
-        console.log(`❓ Received question for AI: "${question}"`);
-        
-        // Add user's question to history
-        chatHistory.push({ role: "user", parts: [{ text: question }] });
-
-        try {
-            // Show that the bot is "thinking"
-            bot.chat("..."); 
-            
-            const chatSession = aiModel.startChat({ history: chatHistory });
-            const result = await chatSession.sendMessage(question);
-            const response = result.response;
-            const text = response.text();
-
-            console.log(`🧠 AI Response: "${text}"`);
-
-            // Add AI's response to history
-            chatHistory.push({ role: "model", parts: [{ text: text }] });
-            
-            // Send the response to the in-game chat
-            bot.chat(text);
-
-        } catch (error) {
-            console.error("ERROR calling Gemini API:", error);
-            bot.chat("Sorry, my brain is a bit fuzzy right now. I couldn't think of a response.");
-        }
-    }
-});
-
-// --- Utility Functions ---
-
-// Makes the bot look around randomly to seem more alive
-function lookAround() {
-    if (bot.pathfinder.isMoving()) return; // Don't look around if walking
-
-    const yaw = Math.random() * Math.PI * 2 - Math.PI; // Full 360 degrees
-    const pitch = Math.random() * Math.PI - Math.PI / 2; // Look up and down
-    bot.look(yaw, pitch);
+        // Set the goal for the pathfinder. Range of 1 means it will try to get within 1 block.
+        bot.pathfinder.setGoal(new GoalNear(Math.floor(x), Math.floor(y), Math.floor(z), 1));
+    }, 10000); // Move every 10 seconds
 }
 
+// Start the bot for the first time
+createBot();
 
-// --- Error Handling ---
-bot.on('kicked', (reason) => console.log('❌ Bot was kicked from server for:', reason));
-bot.on('error', (err) => console.log('❌ An error occurred:', err));
-bot.on('end', () => console.log('🔌 Bot has been disconnected.'));
+
