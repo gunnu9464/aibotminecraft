@@ -4,15 +4,19 @@ const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const { GoalNear } = goals;
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config(); // Load environment variables from .env file
+const http = require('http'); // Import Node.js http module for web server
 
 // --- Configuration ---
 // Your Aternos server IP and bot username
 const SERVER_HOST = 'Nerddddsmp.aternos.me'; // Your Aternos server IP
 const SERVER_PORT = 25565; // Default Minecraft port, usually works for Aternos
-const BOT_USERNAME = 'AI'; // The username your bot will appear as in Minecraft
+const BOT_USERNAME = 'AIBot'; // The username your bot will appear as in Minecraft
 
 // Gemini AI API Key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+// Render's required port for health checks
+const RENDER_PORT = process.env.PORT || 3000; // Use port provided by Render, or 3000 as a fallback
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -21,6 +25,16 @@ const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 // Bot instance (will be reassigned on reconnect)
 let bot;
 let movementInterval; // To control the bot's wandering
+
+// --- Web Server for Render Health Checks ---
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Minecraft AI Bot is running!\n');
+});
+
+server.listen(RENDER_PORT, () => {
+    console.log(`Web server listening on port ${RENDER_PORT} for Render health checks.`);
+});
 
 // --- Bot Creation and Connection Logic ---
 function createBot() {
@@ -69,7 +83,8 @@ function createBot() {
             const prompt = message.substring(4).trim(); // Get the text after "!ai "
             if (prompt) {
                 try {
-                    // Send prompt to Gemini AI
+                    // Stop wandering while processing AI request to prevent conflict
+                    stopWandering();
                     bot.chat(`Thinking about "${prompt}"...`);
                     const result = await model.generateContent(prompt);
                     const response = await result.response;
@@ -77,9 +92,14 @@ function createBot() {
 
                     // Send AI response back to chat
                     bot.chat(`${username}, AI says: ${text}`);
+
+                    // Resume wandering after responding
+                    startWandering();
                 } catch (error) {
                     console.error('Error calling Gemini AI:', error);
                     bot.chat(`${username}, I'm sorry, I encountered an error while processing your request.`);
+                    // Resume wandering even on error
+                    startWandering();
                 }
             } else {
                 bot.chat(`${username}, please provide a question after !ai, e.g., !ai Tell me a joke.`);
@@ -90,18 +110,21 @@ function createBot() {
     // When the bot is kicked from the server
     bot.on('kicked', (reason, loggedIn) => {
         console.log(`Kicked from server: ${reason} (Logged In: ${loggedIn})`);
+        stopWandering(); // Stop movement before reconnecting
         reconnect();
     });
 
     // When the bot disconnects (e.g., server stops, network issue)
     bot.on('end', (reason) => {
         console.log(`Disconnected from server: ${reason}`);
+        stopWandering(); // Stop movement before reconnecting
         reconnect();
     });
 
     // When an error occurs
     bot.on('error', (err) => {
         console.error(`Bot error: ${err}`);
+        stopWandering(); // Stop movement before reconnecting
         reconnect();
     });
 }
@@ -119,30 +142,54 @@ function reconnect() {
 }
 
 // --- Automatic Movement Logic ---
-function startWandering() {
-    // Clear any previous wandering interval
+function stopWandering() {
     if (movementInterval) {
         clearInterval(movementInterval);
+        movementInterval = null;
+        console.log('Stopped wandering.');
+        // Optionally clear any current pathfinding goal
+        if (bot && bot.pathfinder) {
+            bot.pathfinder.setGoal(null);
+        }
     }
+}
+
+function startWandering() {
+    // Clear any previous wandering interval to prevent multiple intervals running
+    stopWandering();
 
     movementInterval = setInterval(() => {
-        // If the bot is not yet spawned or already pathfinding, skip
-        if (!bot || !bot.entity || bot.pathfinder.is == null) {
-            // Check if pathfinder is ready before setting a goal
-            console.log('Bot not spawned or pathfinder not ready for wandering.');
-            return;
+        // Only attempt to set a new goal if the bot exists, is spawned, and not already moving
+        if (bot && bot.entity && bot.pathfinder && !bot.pathfinder.isMoving()) {
+            // Generate a random target position within a reasonable range
+            const randomOffsetX = (Math.random() - 0.5) * 20; // -10 to +10 blocks
+            const randomOffsetZ = (Math.random() - 0.5) * 20; // -10 to +10 blocks
+
+            const targetX = bot.entity.position.x + randomOffsetX;
+            const targetZ = bot.entity.position.z + randomOffsetZ;
+            const targetY = bot.entity.position.y; // Keep Y-level for simplicity
+
+            // Try to find a valid block near the target Y-level
+            const targetBlock = bot.world.getBlock(new Vec3(Math.floor(targetX), Math.floor(targetY), Math.floor(targetZ)));
+            if (targetBlock && targetBlock. walkable) { // Check if the block is walkable
+                console.log(`Setting new wandering goal to: (${Math.floor(targetX)}, ${Math.floor(targetY)}, ${Math.floor(targetZ)})`);
+                // Set the goal for the pathfinder. Range of 2 means it will try to get within 2 blocks of the target.
+                bot.pathfinder.setGoal(new GoalNear(Math.floor(targetX), Math.floor(targetY), Math.floor(targetZ), 2));
+            } else {
+                console.log('Random target block not walkable, trying again next interval.');
+            }
+        } else if (bot && bot.pathfinder && bot.pathfinder.isMoving()) {
+            console.log('Bot is currently moving, waiting to set new goal.');
+        } else {
+            console.log('Bot not ready to wander.');
         }
-
-        const x = bot.entity.position.x + (Math.random() - 0.5) * 32; // Random X within 32 blocks
-        const z = bot.entity.position.z + (Math.random() - 0.5) * 32; // Random Z within 32 blocks
-        const y = bot.entity.position.y; // Keep Y-level mostly the same for simple wandering
-
-        // Set the goal for the pathfinder. Range of 1 means it will try to get within 1 block.
-        bot.pathfinder.setGoal(new GoalNear(Math.floor(x), Math.floor(y), Math.floor(z), 1));
-    }, 10000); // Move every 10 seconds
+    }, 15000); // Attempt to move every 15 seconds
+    console.log('Started wandering.');
 }
 
 // Start the bot for the first time
 createBot();
+
+
 
 
