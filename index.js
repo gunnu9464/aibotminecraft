@@ -12,7 +12,7 @@ const Vec3 = require('vec3').Vec3; // Import Vec3 for vector operations
 const SERVER_HOST = 'Nerddddsmp.aternos.me'; // Your Aternos server IP
 const SERVER_PORT = 25565; // Default Minecraft port, usually works for Aternos
 const BOT_USERNAME = 'AIBot'; // The username your bot will appear as in Minecraft
-const SERVER_VERSION = 'false'; // <<< IMPORTANT: REPLACE WITH YOUR EXACT ATERNOS SERVER VERSION (e.g., '1.20.1', '1.19.4')
+const SERVER_VERSION = '1.20.1'; // <<< IMPORTANT: REPLACE WITH YOUR EXACT ATERNOS SERVER VERSION (e.g., '1.20.1', '1.19.4')
 
 // Gemini AI API Key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
