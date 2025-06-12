@@ -29,9 +29,9 @@ let bot;
 let movementInterval; // To control the bot's wandering
 let reconnectTimeout; // To store the timeout for reconnection attempts
 let reconnectAttempts = 0; // Track reconnection attempts
-const MAX_RECONNECT_ATTEMPTS = 15; // Increased max attempts for more resilience
+const MAX_RECONNECT_ATTEMPTS = 1000000000000000000000; // Increased max attempts for more resilience
 const BASE_RECONNECT_DELAY = 5000; // 5 seconds base delay
-const AI_RESPONSE_RESUME_DELAY = 3000; // Delay before resuming wandering after AI response
+const AI_RESPONSE_RESUME_DELAY = 1000; // Delay before resuming wandering after AI response
 
 // --- Web Server for Render Health Checks ---
 // This ensures Render marks your service as "live"
@@ -244,6 +244,33 @@ function startWandering() {
     }, 10000); // Check for movement/action every 10 seconds
     console.log('Wandering interval started.');
 }
+  function randomMove() {
+    if (!bot.entity || !bot.entity.position) return;
+    const actions = [
+      () => bot.setControlState('forward', true),
+      () => bot.setControlState('back', true),
+      () => bot.setControlState('left', true),
+      () => bot.setControlState('right', true),
+      () => bot.setControlState('jump', true),
+      () => bot.setControlState('sneak', true),
+      () => bot.setControlState('sprint', true),
+      () => bot.setControlState('jump', false),
+      () => bot.setControlState('sneak', false),
+      () => bot.setControlState('forward', false),
+      () => bot.setControlState('back', false),
+      () => bot.setControlState('left', false),
+      () => bot.setControlState('right', false),
+      () => bot.setControlState('sprint', false),
+    ];
+    const action = actions[Math.floor(Math.random() * actions.length)];
+    action();
+    setTimeout(randomMove, 5000 + Math.random() * 5000);
+  }
+
+  bot.on('spawn', () => {
+    console.log('Bot spawned! Starting random movement.');
+    randomMove();
+  });
 
 // Start the bot for the first time
 createBot();
