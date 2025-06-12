@@ -1,40 +1,37 @@
 // Import necessary modules
 const mineflayer = require('mineflayer');
-const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
-const { GoalNear } = goals;
+// Removed pathfinder and goals as they are no longer used for movement
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config(); // Load environment variables from .env file
 const http = require('http'); // Import Node.js http module for web server
-const Vec3 = require('vec3').Vec3; // Import Vec3 for vector operations
+// Removed Vec3 as it is no longer used for movement
 
 // --- Configuration ---
-// Load config from environment variables (from your snippet)
-// Defaults are provided, but prefer setting these in Render's environment variables.
+// Load config from environment variables
 const SERVER_HOST = process.env.SERVER_HOST || 'Nerddddsmp.aternos.me';
-const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 57453; // Use your provided port as default
-const BOT_USERNAME = process.env.MC_USERNAME || 'AIBot'; // Using MC_USERNAME as per your snippet
-const AUTH_TYPE = process.env.AUTH || 'offline'; // 'offline' for cracked, 'microsoft' for premium
-const SERVER_VERSION = process.env.MC_VERSION || '1.21.5'; // Use your provided version as default
+const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 57453;
+const BOT_USERNAME = process.env.MC_USERNAME || 'AIBot';
+const AUTH_TYPE = process.env.AUTH || 'offline';
+const SERVER_VERSION = process.env.MC_VERSION || '1.21.5';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Render's required port for health checks
 const RENDER_PORT = process.env.PORT || 3000;
 
-// Initialize Gemini AI (re-integrated)
+// Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" }); // Retaining gemini-2.0-flash as it was working better for you
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // Bot instance (will be reassigned on reconnect)
 let bot;
 let movementInterval; // To control the bot's wandering
 let reconnectTimeout; // To store the timeout for reconnection attempts
 let reconnectAttempts = 0; // Track reconnection attempts
-const MAX_RECONNECT_ATTEMPTS = 1000000000000000000000; // Increased max attempts for more resilience
-const BASE_RECONNECT_DELAY = 5000; // 5 seconds base delay
-const AI_RESPONSE_RESUME_DELAY = 1000; // Delay before resuming wandering after AI response
+const MAX_RECONNECT_ATTEMPTS = 111111111111111111115;
+const BASE_RECONNECT_DELAY = 5000;
+const AI_RESPONSE_RESUME_DELAY = 1000;
 
 // --- Web Server for Render Health Checks ---
-// This ensures Render marks your service as "live"
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Minecraft AI Bot is running!\n');
@@ -46,12 +43,11 @@ server.listen(RENDER_PORT, () => {
 
 // --- Bot Creation and Connection Logic ---
 function createBot() {
-    clearTimeout(reconnectTimeout); // Clear any pending reconnection attempts
-    reconnectAttempts++; // Increment attempt counter
+    clearTimeout(reconnectTimeout);
+    reconnectAttempts++;
 
     if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
         console.error(`Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. The bot will no longer attempt to reconnect automatically.`);
-        // At this point, Render might eventually restart the container if it's unhealthy.
         return;
     }
 
@@ -61,13 +57,10 @@ function createBot() {
         host: SERVER_HOST,
         port: SERVER_PORT,
         username: BOT_USERNAME,
-        auth: AUTH_TYPE, // Use AUTH_TYPE from environment variables
-        version: SERVER_VERSION, // Use SERVER_VERSION from environment variables
-        hideErrors: false, // Set to true to hide some common errors in console
+        auth: AUTH_TYPE,
+        version: SERVER_VERSION,
+        hideErrors: false,
     });
-
-    // Load the pathfinder plugin for intelligent movement
-    bot.loadPlugin(pathfinder);
 
     // --- Event Handlers ---
 
@@ -84,16 +77,11 @@ function createBot() {
 
     // When the bot spawns in the world
     bot.on('spawn', () => {
-        console.log(`${BOT_USERNAME} spawned.`);
-        // Set up default movements for pathfinding
-        const defaultMove = new Movements(bot);
-        bot.pathfinder.setMovements(defaultMove);
-
-        // Start wandering
-        startWandering();
+        console.log('Bot spawned! Starting random movement.');
+        randomMove(); // Call the new randomMove for continuous movement
     });
 
-    // When a player sends a chat message (re-integrated AI logic)
+    // When a player sends a chat message
     bot.on('chat', async (username, message) => {
         // Ignore messages from the bot itself
         if (username === bot.username) return;
@@ -102,11 +90,11 @@ function createBot() {
 
         // Handle AI chat command
         if (message.startsWith('!ai ')) {
-            const prompt = message.substring(4).trim(); // Get the text after "!ai "
+            const prompt = message.substring(4).trim();
             if (prompt) {
                 try {
-                    // Stop wandering while processing AI request to prevent conflict
-                    stopWandering();
+                    // Stop current movement during AI processing
+                    stopMovement();
                     try {
                         bot.chat(`Thinking about "${prompt}"...`);
                     } catch (chatError) {
@@ -126,17 +114,16 @@ function createBot() {
 
                 } catch (error) {
                     console.error('Error calling Gemini AI:', error);
-                    // Provide a more detailed error message to the user
                     try {
                         bot.chat(`${username}, I'm sorry, I encountered an error while processing your request: ${error.message || 'Unknown error'}.`);
                     } catch (chatError) {
                         console.error(`Error sending AI error chat message: ${chatError.message}`);
                     }
                 } finally {
-                    // Always try to resume wandering after AI interaction, with a slight delay
-                    console.log(`Scheduling resumption of wandering in ${AI_RESPONSE_RESUME_DELAY / 1000} seconds.`);
+                    // Always try to resume movement after AI interaction, with a slight delay
+                    console.log(`Scheduling resumption of movement in ${AI_RESPONSE_RESUME_DELAY / 1000} seconds.`);
                     setTimeout(() => {
-                        startWandering();
+                        randomMove(); // Resume the new random movement
                     }, AI_RESPONSE_RESUME_DELAY);
                 }
             } else {
@@ -149,128 +136,99 @@ function createBot() {
         }
     });
 
-    // When the bot is kicked from the server (retained handler)
+    // When the bot is kicked from the server
     bot.on('kicked', (reason, loggedIn) => {
         console.log(`Kicked from server! Reason: "${reason}" (Logged In: ${loggedIn})`);
-        stopWandering(); // Stop movement before reconnecting
+        stopMovement(); // Stop movement before reconnecting
         reconnect();
     });
 
-    // When the bot disconnects (e.g., server stops, network issue) (retained handler)
+    // When the bot disconnects (e.g., server stops, network issue)
     bot.on('end', (reason) => {
         console.log(`Disconnected from server! Reason: "${reason}"`);
-        stopWandering(); // Stop movement before reconnecting
+        stopMovement(); // Stop movement before reconnecting
         reconnect();
     });
 
-    // When an error occurs (retained handler)
+    // When an error occurs
     bot.on('error', (err) => {
         console.error(`Bot encountered an error:`, err);
-        // If the error is a PartialReadError, log more context but still attempt reconnect
         if (err.name === 'PartialReadError') {
             console.error('PartialReadError suggests a server version mismatch or malformed packet. Ensure SERVER_VERSION is correct!');
         }
-        stopWandering(); // Stop movement before reconnecting
+        stopMovement(); // Stop movement before reconnecting
         reconnect();
     });
 }
 
-// --- Reconnection Logic (retained exponential backoff) ---
+// --- Reconnection Logic ---
 function reconnect() {
-    stopWandering(); // Ensure wandering is stopped and any existing goals are cleared
-
-    // Calculate exponential backoff delay to avoid spamming connection attempts
+    stopMovement(); // Ensure movement is stopped
     const delay = BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts);
     console.log(`Scheduling reconnection attempt ${reconnectAttempts + 1} in ${delay / 1000} seconds...`);
-
     reconnectTimeout = setTimeout(createBot, delay);
 }
 
-// --- Automatic Movement Logic (combined approach) ---
-function stopWandering() {
-    if (movementInterval) {
-        clearInterval(movementInterval);
-        movementInterval = null;
-        console.log('Wandering interval stopped.');
-        // Clear any current pathfinding goal to immediately stop movement
-        if (bot && bot.pathfinder) {
-            bot.pathfinder.setGoal(null);
-            console.log('Pathfinding goal cleared.');
-        }
+// --- New Automatic Movement Logic ---
+function stopMovement() {
+    clearTimeout(movementInterval); // Clear any pending randomMove calls
+    movementInterval = null; // Clear the interval ID
+    console.log('Bot movement stopped.');
+    // Explicitly set all control states to false to ensure bot is idle
+    if (bot) {
+        bot.setControlState('forward', false);
+        bot.setControlState('back', false);
+        bot.setControlState('left', false);
+        bot.setControlState('right', false);
+        bot.setControlState('jump', false);
+        bot.setControlState('sneak', false);
+        bot.setControlState('sprint', false);
     }
 }
 
-function startWandering() {
-    // Clear any previous wandering interval to prevent multiple intervals running
-    stopWandering();
+function randomMove() {
+    // Ensure bot is active and has a position before attempting movement
+    if (!bot || !bot.entity || !bot.entity.position) {
+        console.log('Bot not ready for random movement. Skipping.');
+        return;
+    }
 
-    movementInterval = setInterval(() => {
-        // Only attempt to set a new goal if the bot exists, is spawned, and not already moving
-        if (bot && bot.entity && bot.pathfinder && !bot.pathfinder.isMoving()) {
-            // Randomly decide between simple movement (jump/sneak) and pathfinding
-            const randomActionType = Math.random();
-            if (randomActionType < 0.3) { // 30% chance for simple action if not already moving
-                const simpleAction = Math.random();
-                if (simpleAction < 0.5) { // 50% of that 30% for jump
-                    console.log('Bot is jumping...');
-                    bot.setControlState('jump', true);
-                    setTimeout(() => bot.setControlState('jump', false), 500);
-                } else { // 50% of that 30% for sneak
-                    console.log('Bot is sneaking...');
-                    bot.setControlState('sneak', true);
-                    setTimeout(() => bot.setControlState('sneak', false), 1000);
-                }
-            } else { // 70% chance for pathfinding if not doing a simple action and not already pathfinding
-                // Pathfinding to a random nearby location
-                const randomOffsetX = (Math.random() - 0.5) * 20; // -10 to +10 blocks
-                const randomOffsetZ = (Math.random() - 0.5) * 20; // -10 to +10 blocks
-
-                const targetX = bot.entity.position.x + randomOffsetX;
-                const targetZ = bot.entity.position.z + randomOffsetZ;
-                const targetY = bot.entity.position.y; // Keep Y-level for simplicity
-
-                // Attempt to find a valid walkable block near the target Y-level
-                const targetBlock = bot.world.getBlock(new Vec3(Math.floor(targetX), Math.floor(targetY), Math.floor(targetZ)));
-                if (targetBlock && targetBlock.walkable) {
-                    console.log(`Setting new wandering goal to: (${Math.floor(targetX)}, ${Math.floor(targetY)}, ${Math.floor(targetZ)})`);
-                    bot.pathfinder.setGoal(new GoalNear(Math.floor(targetX), Math.floor(targetY), Math.floor(targetZ), 2));
-                } else {
-                    console.log('Random target block not walkable for pathfinding, trying again next interval.');
-                }
-            }
-        } else {
-            console.log('Bot or pathfinder not ready for wandering.');
-        }
-    }, 10000); // Check for movement/action every 10 seconds
-    console.log('Wandering interval started.');
-}
-  function randomMove() {
-    if (!bot.entity || !bot.entity.position) return;
+    // Define available actions and their corresponding functions
     const actions = [
-      () => bot.setControlState('forward', true),
-      () => bot.setControlState('back', true),
-      () => bot.setControlState('left', true),
-      () => bot.setControlState('right', true),
-      () => bot.setControlState('jump', true),
-      () => bot.setControlState('sneak', true),
-      () => bot.setControlState('sprint', true),
-      () => bot.setControlState('jump', false),
-      () => bot.setControlState('sneak', false),
-      () => bot.setControlState('forward', false),
-      () => bot.setControlState('back', false),
-      () => bot.setControlState('left', false),
-      () => bot.setControlState('right', false),
-      () => bot.setControlState('sprint', false),
+        () => bot.setControlState('forward', true),
+        () => bot.setControlState('back', true),
+        () => bot.setControlState('left', true),
+        () => bot.setControlState('right', true),
+        () => bot.setControlState('jump', true),
+        () => bot.setControlState('sneak', true),
+        () => bot.setControlState('sprint', true),
+        // Actions to stop movement (important for preventing continuous motion)
+        () => bot.setControlState('forward', false),
+        () => bot.setControlState('back', false),
+        () => bot.setControlState('left', false),
+        () => bot.setControlState('right', false),
+        () => bot.setControlState('jump', false),
+        () => bot.setControlState('sneak', false),
+        () => bot.setControlState('sprint', false),
     ];
-    const action = actions[Math.floor(Math.random() * actions.length)];
-    action();
-    setTimeout(randomMove, 5000 + Math.random() * 5000);
-  }
 
-  bot.on('spawn', () => {
-    console.log('Bot spawned! Starting random movement.');
-    randomMove();
-  });
+    // Reset all controls to ensure a clean state before applying a new action
+    bot.setControlState('forward', false);
+    bot.setControlState('back', false);
+    bot.setControlState('left', false);
+    bot.setControlState('right', false);
+    bot.setControlState('jump', false);
+    bot.setControlState('sneak', false);
+    bot.setControlState('sprint', false);
+
+    // Pick a random action and execute it
+    const action = actions[Math.floor(Math.random() * actions.length)];
+    console.log(`Executing random movement action.`);
+    action();
+
+    // Schedule the next random movement
+    movementInterval = setTimeout(() => randomMove(), 5000 + Math.random() * 5000); // Move every 5-10 seconds
+}
 
 // Start the bot for the first time
 createBot();
