@@ -10,9 +10,10 @@ const Vec3 = require('vec3').Vec3; // Import Vec3 for vector operations
 // --- Configuration ---
 // Your Aternos server IP and bot username
 const SERVER_HOST = 'Nerddddsmp.aternos.me'; // Your Aternos server IP
-const SERVER_PORT = 25565; // Default Minecraft port, usually works for Aternos
+const SERVER_PORT = 57453; // Updated Port: 57453
 const BOT_USERNAME = 'AIBot'; // The username your bot will appear as in Minecraft
-const SERVER_VERSION = '1.20.1'; // <<< IMPORTANT: REPLACE WITH YOUR EXACT ATERNOS SERVER VERSION (e.g., '1.20.1', '1.19.4')
+// <<< IMPORTANT: REPLACE WITH YOUR EXACT ATERNOS SERVER VERSION (e.g., '1.20.1', '1.19.4')
+const SERVER_VERSION = '1.21.5'; // Updated Version: 1.21.5
 
 // Gemini AI API Key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -22,8 +23,7 @@ const RENDER_PORT = process.env.PORT || 3000; // Use port provided by Render, or
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-// --- CHANGE MADE HERE: Model reverted to gemini-2.0-flash ---
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" }); // Reverted to gemini-2.0-flash as requested
 
 // Bot instance (will be reassigned on reconnect)
 let bot;
@@ -96,13 +96,13 @@ function createBot() {
                     // Send AI response back to chat
                     bot.chat(`${username}, AI says: ${text}`);
 
-                    // Resume wandering after responding
-                    startWandering();
+                    // --- CHANGE MADE HERE: Added a short delay before resuming wandering ---
+                    setTimeout(() => startWandering(), 1000); // Wait 1 second before resuming movement
                 } catch (error) {
                     console.error('Error calling Gemini AI:', error);
-                    bot.chat(`${username}, I'm sorry, I encountered an error while processing your request.`);
-                    // Resume wandering even on error
-                    startWandering();
+                    bot.chat(`${username}, I'm sorry, I encountered an error while processing your request: ${error.message || error}.`);
+                    // --- CHANGE MADE HERE: Added a short delay before resuming wandering even on error ---
+                    setTimeout(() => startWandering(), 1000); // Wait 1 second before resuming movement
                 }
             } else {
                 bot.chat(`${username}, please provide a question after !ai, e.g., !ai Tell me a joke.`);
