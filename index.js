@@ -1,10 +1,8 @@
 // Import necessary modules
 const mineflayer = require('mineflayer');
-// Removed pathfinder and goals as they are no longer used for movement
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config(); // Load environment variables from .env file
 const http = require('http'); // Import Node.js http module for web server
-// Removed Vec3 as it is no longer used for movement
 
 // --- Configuration ---
 // Load config from environment variables
@@ -12,7 +10,9 @@ const SERVER_HOST = process.env.SERVER_HOST || 'Nerddddsmp.aternos.me';
 const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 57453;
 const BOT_USERNAME = process.env.MC_USERNAME || 'AIBot';
 const AUTH_TYPE = process.env.AUTH || 'offline';
-const SERVER_VERSION = process.env.MC_VERSION || '1.21.5';
+// <<< IMPORTANT: Changed to false for auto-detection. If this fails, hardcode EXACT version from Aternos.
+const SERVER_VERSION = false; // Set to false for auto-detection, or '1.20.4', '1.21.5' etc.
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Render's required port for health checks
@@ -27,9 +27,9 @@ let bot;
 let movementInterval; // To control the bot's wandering
 let reconnectTimeout; // To store the timeout for reconnection attempts
 let reconnectAttempts = 0; // Track reconnection attempts
-const MAX_RECONNECT_ATTEMPTS = 111111111111111111115;
+const MAX_RECONNECT_ATTEMPTS = 15;
 const BASE_RECONNECT_DELAY = 5000;
-const AI_RESPONSE_RESUME_DELAY = 1000;
+const AI_RESPONSE_RESUME_DELAY = 3000;
 
 // --- Web Server for Render Health Checks ---
 const server = http.createServer((req, res) => {
@@ -51,14 +51,14 @@ function createBot() {
         return;
     }
 
-    console.log(`Attempt ${reconnectAttempts} to connect to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_USERNAME} (Minecraft v${SERVER_VERSION})...`);
+    console.log(`Attempt ${reconnectAttempts} to connect to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_USERNAME} (Minecraft v${SERVER_VERSION === false ? 'Auto-Detect' : SERVER_VERSION})...`);
 
     bot = mineflayer.createBot({
         host: SERVER_HOST,
         port: SERVER_PORT,
         username: BOT_USERNAME,
         auth: AUTH_TYPE,
-        version: SERVER_VERSION,
+        version: SERVER_VERSION, // Now set to false for auto-detection
         hideErrors: false,
     });
 
@@ -146,6 +146,10 @@ function createBot() {
     // When the bot disconnects (e.g., server stops, network issue)
     bot.on('end', (reason) => {
         console.log(`Disconnected from server! Reason: "${reason}"`);
+        // If the disconnection is due to a protocol error, log a specific message
+        if (reason && typeof reason === 'string' && (reason.includes('Bad Packet') || reason.includes('Protocol Error'))) {
+             console.error('SEVERE: Disconnection likely due to protocol mismatch. Double-check Aternos server version!');
+        }
         stopMovement(); // Stop movement before reconnecting
         reconnect();
     });
@@ -153,8 +157,9 @@ function createBot() {
     // When an error occurs
     bot.on('error', (err) => {
         console.error(`Bot encountered an error:`, err);
+        // PartialReadError is almost always a version mismatch
         if (err.name === 'PartialReadError') {
-            console.error('PartialReadError suggests a server version mismatch or malformed packet. Ensure SERVER_VERSION is correct!');
+            console.error('CRITICAL: PartialReadError! This strongly suggests a server version mismatch or malformed packet. Ensure SERVER_VERSION is EXACTLY correct or try `false` for auto-detect.');
         }
         stopMovement(); // Stop movement before reconnecting
         reconnect();
@@ -169,7 +174,7 @@ function reconnect() {
     reconnectTimeout = setTimeout(createBot, delay);
 }
 
-// --- New Automatic Movement Logic ---
+// --- Automatic Movement Logic ---
 function stopMovement() {
     clearTimeout(movementInterval); // Clear any pending randomMove calls
     movementInterval = null; // Clear the interval ID
@@ -190,6 +195,8 @@ function randomMove() {
     // Ensure bot is active and has a position before attempting movement
     if (!bot || !bot.entity || !bot.entity.position) {
         console.log('Bot not ready for random movement. Skipping.');
+        // Schedule next check anyway, in case bot becomes ready later
+        movementInterval = setTimeout(() => randomMove(), 5000 + Math.random() * 5000);
         return;
     }
 
