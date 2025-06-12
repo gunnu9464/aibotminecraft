@@ -10,7 +10,7 @@ const SERVER_HOST = process.env.SERVER_HOST || 'Nerddddsmp.aternos.me';
 const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 57453;
 const BOT_USERNAME = process.env.MC_USERNAME || 'AIBot';
 const AUTH_TYPE = process.env.AUTH || 'offline';
-// <<< IMPORTANT: Changed to false for auto-detection. If this fails, hardcode EXACT version from Aternos.
+// <<< IMPORTANT: Still auto-detecting. If PartialReadError persists, manually set this to EXACT Aternos version (e.g., '1.20.4')
 const SERVER_VERSION = false; // Set to false for auto-detection, or '1.20.4', '1.21.5' etc.
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -41,6 +41,19 @@ server.listen(RENDER_PORT, () => {
     console.log(`Web server listening on port ${RENDER_PORT} for Render health checks.`);
 });
 
+// --- Helper function to safely send chat messages ---
+function sendBotChat(message) {
+    if (bot && bot.chat) {
+        try {
+            bot.chat(message);
+        } catch (chatError) {
+            console.error(`Error sending chat message: ${chatError.message}. Message: "${message}"`);
+        }
+    } else {
+        console.error('Attempted to send chat message but bot.chat is not available:', message);
+    }
+}
+
 // --- Bot Creation and Connection Logic ---
 function createBot() {
     clearTimeout(reconnectTimeout);
@@ -68,11 +81,7 @@ function createBot() {
     bot.on('login', () => {
         console.log(`${BOT_USERNAME} logged in successfully!`);
         reconnectAttempts = 0; // Reset attempts on successful login
-        try {
-            bot.chat('Hello, world! I am your AI bot, ready to assist. Type !ai <your_question> to chat with me.');
-        } catch (chatError) {
-            console.error(`Error sending login chat message: ${chatError.message}`);
-        }
+        sendBotChat('Hello, world! I am your AI bot, ready to assist. Type !ai <your_question> to chat with me.');
     });
 
     // When the bot spawns in the world
@@ -95,30 +104,18 @@ function createBot() {
                 try {
                     // Stop current movement during AI processing
                     stopMovement();
-                    try {
-                        bot.chat(`Thinking about "${prompt}"...`);
-                    } catch (chatError) {
-                        console.error(`Error sending "Thinking..." chat message: ${chatError.message}`);
-                    }
+                    sendBotChat(`Thinking about "${prompt}"...`);
 
                     const result = await model.generateContent(prompt);
                     const response = await result.response;
                     const text = response.text();
 
                     // Send AI response back to chat
-                    try {
-                        bot.chat(`${username}, AI says: ${text}`);
-                    } catch (chatError) {
-                        console.error(`Error sending AI response chat message: ${chatError.message}`);
-                    }
+                    sendBotChat(`${username}, AI says: ${text}`);
 
                 } catch (error) {
                     console.error('Error calling Gemini AI:', error);
-                    try {
-                        bot.chat(`${username}, I'm sorry, I encountered an error while processing your request: ${error.message || 'Unknown error'}.`);
-                    } catch (chatError) {
-                        console.error(`Error sending AI error chat message: ${chatError.message}`);
-                    }
+                    sendBotChat(`${username}, I'm sorry, I encountered an error while processing your request: ${error.message || 'Unknown error'}.`);
                 } finally {
                     // Always try to resume movement after AI interaction, with a slight delay
                     console.log(`Scheduling resumption of movement in ${AI_RESPONSE_RESUME_DELAY / 1000} seconds.`);
@@ -127,11 +124,7 @@ function createBot() {
                     }, AI_RESPONSE_RESUME_DELAY);
                 }
             } else {
-                try {
-                    bot.chat(`${username}, please provide a question after !ai, e.g., !ai Tell me a joke.`);
-                } catch (chatError) {
-                    console.error(`Error sending AI usage chat message: ${chatError.message}`);
-                }
+                sendBotChat(`${username}, please provide a question after !ai, e.g., !ai Tell me a joke.`);
             }
         }
     });
