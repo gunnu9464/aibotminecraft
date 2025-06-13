@@ -8,10 +8,10 @@ const http = require('http'); // Import Node.js http module for web server
 // Load config from environment variables
 const SERVER_HOST = process.env.SERVER_HOST || 'Nerddddsmp.aternos.me';
 const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 57453;
-const BOT_USERNAME = process.env.MC_USERNAME || 'AI';
-const AUTH_TYPE = process.env.AUTH || '1.21.5';
+const BOT_USERNAME = process.env.MC_USERNAME || 'AIBot';
+const AUTH_TYPE = process.env.AUTH || 'offline';
 // <<< IMPORTANT: Still auto-detecting. If PartialReadError persists, manually set this to EXACT Aternos version (e.g., '1.20.4')
-const SERVER_VERSION = false; // Set to false for auto-detection, or '1.20.4', '1.21.5' etc.
+const SERVER_VERSION = 1.21.5; // Set to false for auto-detection, or '1.20.4', '1.21.5' etc.
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -28,7 +28,7 @@ let movementInterval; // To control the bot's wandering
 let reconnectTimeout; // To store the timeout for reconnection attempts
 let reconnectAttempts = 0; // Track reconnection attempts
 const MAX_RECONNECT_ATTEMPTS = 15;
-const BASE_RECONNECT_DELAY = 5000;
+const BASE_RECONNECT_DELAY = 30000; // <<< IMPORTANT: Increased to 30 seconds to avoid throttling
 const AI_RESPONSE_RESUME_DELAY = 3000;
 
 // --- Web Server for Render Health Checks ---
@@ -50,7 +50,7 @@ function sendBotChat(message) {
             console.error(`Error sending chat message: ${chatError.message}. Message: "${message}"`);
         }
     } else {
-        console.error('Attempted to send chat message but bot.chat is not available:', message);
+        console.error('Attempted to send chat message but bot.chat is not available (bot may be disconnected):', message);
     }
 }
 
@@ -71,7 +71,7 @@ function createBot() {
         port: SERVER_PORT,
         username: BOT_USERNAME,
         auth: AUTH_TYPE,
-        version: SERVER_VERSION, // Now set to false for auto-detection
+        version: SERVER_VERSION, // Still set to false for auto-detection
         hideErrors: false,
     });
 
@@ -132,6 +132,9 @@ function createBot() {
     // When the bot is kicked from the server
     bot.on('kicked', (reason, loggedIn) => {
         console.log(`Kicked from server! Reason: "${reason}" (Logged In: ${loggedIn})`);
+        if (reason && typeof reason === 'string' && reason.includes('Connection throttled')) {
+            console.error('SERVER THROTTLING: Bot was kicked for reconnecting too quickly. Increasing next delay.');
+        }
         stopMovement(); // Stop movement before reconnecting
         reconnect();
     });
@@ -153,6 +156,8 @@ function createBot() {
         // PartialReadError is almost always a version mismatch
         if (err.name === 'PartialReadError') {
             console.error('CRITICAL: PartialReadError! This strongly suggests a server version mismatch or malformed packet. Ensure SERVER_VERSION is EXACTLY correct or try `false` for auto-detect.');
+        } else if (err.code === 'ECONNRESET') {
+            console.error('ECONNRESET: Connection reset by peer. This often happens due to server issues or network instability.');
         }
         stopMovement(); // Stop movement before reconnecting
         reconnect();
@@ -162,6 +167,7 @@ function createBot() {
 // --- Reconnection Logic ---
 function reconnect() {
     stopMovement(); // Ensure movement is stopped
+    // Exponential backoff delay
     const delay = BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts);
     console.log(`Scheduling reconnection attempt ${reconnectAttempts + 1} in ${delay / 1000} seconds...`);
     reconnectTimeout = setTimeout(createBot, delay);
