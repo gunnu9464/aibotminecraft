@@ -11,7 +11,7 @@ const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 57453;
 const BOT_USERNAME = process.env.MC_USERNAME || 'AIBot';
 const AUTH_TYPE = process.env.AUTH || 'offline';
 // <<< IMPORTANT: Still auto-detecting. If PartialReadError persists, manually set this to EXACT Aternos version (e.g., '1.20.4')
-const SERVER_VERSION = 1.21.5; // Set to false for auto-detection, or '1.20.4', '1.21.5' etc.
+const SERVER_VERSION = false; // Set to false for auto-detection, or '1.20.4', '1.21.5' etc.
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
