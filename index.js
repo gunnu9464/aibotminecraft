@@ -9,7 +9,7 @@ const http = require('http'); // Import Node.js http module for web server
 const SERVER_HOST = process.env.SERVER_HOST || 'Nerddddsmp.aternos.me';
 const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 57453;
 const BOT_USERNAME = process.env.MC_USERNAME || 'AI';
-const AUTH_TYPE = process.env.AUTH || 'offline';
+const AUTH_TYPE = process.env.AUTH || '1.21.5';
 // <<< IMPORTANT: Still auto-detecting. If PartialReadError persists, manually set this to EXACT Aternos version (e.g., '1.20.4')
 const SERVER_VERSION = false; // Set to false for auto-detection, or '1.20.4', '1.21.5' etc.
 
