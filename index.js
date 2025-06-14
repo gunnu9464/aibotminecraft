@@ -169,7 +169,7 @@ function reconnect() {
     stopMovement(); // Ensure movement is stopped
     // Exponential backoff delay
     const delay = BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts);
-    console.log(`Scheduling reconnection attempt ${reconnectAttempts + 1} in ${delay / 1000} seconds...`);
+    console.log(`Scheduling reconnection attempt ${reconnectAttempts + 1} in ${delay / 100} seconds...`);
     reconnectTimeout = setTimeout(createBot, delay);
 }
 
