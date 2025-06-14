@@ -1,17 +1,21 @@
 // Import necessary modules
 const mineflayer = require('mineflayer');
+// Removed pathfinder and goals as they are no longer used for movement
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config(); // Load environment variables from .env file
-const http = require('http'); // Import Node.js http module for web server
+const express = require('express'); // Using express for the web server
 
 // --- Configuration ---
 // Load config from environment variables
 const SERVER_HOST = process.env.SERVER_HOST || 'Nerddddsmp.aternos.me';
 const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 57453;
-const BOT_USERNAME = process.env.MC_USERNAME || 'AI';
+const BOT_USERNAME = process.env.MC_USERNAME || 'AIBot';
 const AUTH_TYPE = process.env.AUTH || 'offline';
-// <<< IMPORTANT: Still auto-detecting. If PartialReadError persists, manually set this to EXACT Aternos version (e.g., '1.20.4')
-const SERVER_VERSION = false; // Set to false for auto-detection, or '1.20.4', '1.21.5' etc.
+
+// Setting to false for auto-detection as per previous discussions.
+// If connection issues persist, strongly consider setting your Aternos server
+// to a stable version like '1.20.4' or '1.19.4' and hardcoding it here.
+const SERVER_VERSION = false;
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -24,73 +28,65 @@ const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // Bot instance (will be reassigned on reconnect)
 let bot;
-let movementInterval; // To control the bot's wandering
-let reconnectTimeout; // To store the timeout for reconnection attempts
-let reconnectAttempts = 0; // Track reconnection attempts
-const MAX_RECONNECT_ATTEMPTS = 15;
-const BASE_RECONNECT_DELAY = 30000; // <<< IMPORTANT: Increased to 30 seconds to avoid throttling
-const AI_RESPONSE_RESUME_DELAY = 3000;
+let movementInterval; // Controls the randomMove setTimeout
+let reconnectTimeout; // Controls the setTimeout for reconnecting
+
+const AI_RESPONSE_RESUME_DELAY = 3000; // Delay after AI response before resuming movement
 
 // --- Web Server for Render Health Checks ---
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Minecraft AI Bot is running!\n');
+const app = express();
+app.get('/', (_req, res) => {
+    res.send('Aternos Bot is running!');
 });
-
-server.listen(RENDER_PORT, () => {
-    console.log(`Web server listening on port ${RENDER_PORT} for Render health checks.`);
+app.listen(RENDER_PORT, () => {
+    console.log(`Web server running on port ${RENDER_PORT}`);
 });
 
 // --- Helper function to safely send chat messages ---
 function sendBotChat(message) {
-    if (bot && bot.chat) {
+    if (bot && bot.chat && bot.currentWindow === null) { // Check if bot.chat is available and not in a menu
         try {
             bot.chat(message);
         } catch (chatError) {
             console.error(`Error sending chat message: ${chatError.message}. Message: "${message}"`);
         }
     } else {
-        console.error('Attempted to send chat message but bot.chat is not available (bot may be disconnected):', message);
+        console.error('Attempted to send chat message but bot.chat is not available (bot may be disconnected or in a menu):', message);
     }
 }
 
 // --- Bot Creation and Connection Logic ---
 function createBot() {
+    // Clear any pending reconnect attempts from previous cycles
     clearTimeout(reconnectTimeout);
-    reconnectAttempts++;
+    stopMovement(); // Ensure any old movement loops are stopped before creating a new bot instance
 
-    if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-        console.error(`Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. The bot will no longer attempt to reconnect automatically.`);
-        return;
-    }
-
-    console.log(`Attempt ${reconnectAttempts} to connect to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_USERNAME} (Minecraft v${SERVER_VERSION === false ? 'Auto-Detect' : SERVER_VERSION})...`);
+    console.log(`Attempting to connect to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_USERNAME} (Minecraft v${SERVER_VERSION === false ? 'Auto-Detect' : SERVER_VERSION})...`);
 
     bot = mineflayer.createBot({
         host: SERVER_HOST,
         port: SERVER_PORT,
         username: BOT_USERNAME,
         auth: AUTH_TYPE,
-        version: SERVER_VERSION, // Still set to false for auto-detection
+        version: SERVER_VERSION, // Set to false for auto-detection
         hideErrors: false,
     });
 
-    // --- Event Handlers ---
+    // --- Event Handlers (Using your provided structure) ---
 
-    // When the bot successfully logs in
     bot.on('login', () => {
-        console.log(`${BOT_USERNAME} logged in successfully!`);
-        reconnectAttempts = 0; // Reset attempts on successful login
+        console.log(`${BOT_USERNAME} logged in successfully! Detected server version: ${bot.version}`);
         sendBotChat('Hello, world! I am your AI bot, ready to assist. Type !ai <your_question> to chat with me.');
     });
 
-    // When the bot spawns in the world
+    // Your provided spawn handler
     bot.on('spawn', () => {
         console.log('Bot spawned! Starting random movement.');
-        randomMove(); // Call the new randomMove for continuous movement
+        // Ensure only one movement loop is active
+        stopMovement();
+        randomMove();
     });
 
-    // When a player sends a chat message
     bot.on('chat', async (username, message) => {
         // Ignore messages from the bot itself
         if (username === bot.username) return;
@@ -101,23 +97,20 @@ function createBot() {
         if (message.startsWith('!ai ')) {
             const prompt = message.substring(4).trim();
             if (prompt) {
-                try {
-                    // Stop current movement during AI processing
-                    stopMovement();
-                    sendBotChat(`Thinking about "${prompt}"...`);
+                // Stop current movement during AI processing
+                stopMovement();
+                sendBotChat(`Thinking about "${prompt}"...`);
 
+                try {
                     const result = await model.generateContent(prompt);
                     const response = await result.response;
                     const text = response.text();
-
-                    // Send AI response back to chat
                     sendBotChat(`${username}, AI says: ${text}`);
-
                 } catch (error) {
                     console.error('Error calling Gemini AI:', error);
                     sendBotChat(`${username}, I'm sorry, I encountered an error while processing your request: ${error.message || 'Unknown error'}.`);
                 } finally {
-                    // Always try to resume movement after AI interaction, with a slight delay
+                    // Always try to resume movement after AI interaction, with a delay
                     console.log(`Scheduling resumption of movement in ${AI_RESPONSE_RESUME_DELAY / 1000} seconds.`);
                     setTimeout(() => {
                         randomMove(); // Resume the new random movement
@@ -129,51 +122,35 @@ function createBot() {
         }
     });
 
-    // When the bot is kicked from the server
-    bot.on('kicked', (reason, loggedIn) => {
-        console.log(`Kicked from server! Reason: "${reason}" (Logged In: ${loggedIn})`);
-        if (reason && typeof reason === 'string' && reason.includes('Connection throttled')) {
-            console.error('SERVER THROTTLING: Bot was kicked for reconnecting too quickly. Increasing next delay.');
-        }
-        stopMovement(); // Stop movement before reconnecting
-        reconnect();
-    });
-
-    // When the bot disconnects (e.g., server stops, network issue)
+    // Your provided end handler
     bot.on('end', (reason) => {
-        console.log(`Disconnected from server! Reason: "${reason}"`);
-        // If the disconnection is due to a protocol error, log a specific message
-        if (reason && typeof reason === 'string' && (reason.includes('Bad Packet') || reason.includes('Protocol Error'))) {
-             console.error('SEVERE: Disconnection likely due to protocol mismatch. Double-check Aternos server version!');
-        }
-        stopMovement(); // Stop movement before reconnecting
-        reconnect();
+        console.log(`Bot disconnected! Reason: "${reason}". Reconnecting in 10 seconds...`);
+        clearTimeout(reconnectTimeout); // Clear any existing reconnect
+        reconnectTimeout = setTimeout(createBot, 10000); // Fixed 10s delay
     });
 
-    // When an error occurs
-    bot.on('error', (err) => {
-        console.error(`Bot encountered an error:`, err);
-        // PartialReadError is almost always a version mismatch
+    // Your provided error handler
+    bot.on('error', err => {
+        console.error('Bot error:', err.message, 'Reconnecting in 15 seconds...');
+        // Log more context for common errors
         if (err.name === 'PartialReadError') {
-            console.error('CRITICAL: PartialReadError! This strongly suggests a server version mismatch or malformed packet. Ensure SERVER_VERSION is EXACTLY correct or try `false` for auto-detect.');
+            console.error('CRITICAL: PartialReadError! This strongly suggests a server version mismatch or malformed packet.');
         } else if (err.code === 'ECONNRESET') {
-            console.error('ECONNRESET: Connection reset by peer. This often happens due to server issues or network instability.');
+            console.error('ECONNRESET: Connection reset by peer. This often happens due to server issues (e.g., crash, restart) or network instability.');
         }
-        stopMovement(); // Stop movement before reconnecting
-        reconnect();
+        clearTimeout(reconnectTimeout); // Clear any existing reconnect
+        reconnectTimeout = setTimeout(createBot, 10000); // Fixed 15s delay
+    });
+
+    // Your provided kicked handler
+    bot.on('kicked', (reason) => {
+        console.log('Bot was kicked:', reason);
+        // The 'end' event handler will typically be triggered right after 'kicked',
+        // handling the reconnection.
     });
 }
 
-// --- Reconnection Logic ---
-function reconnect() {
-    stopMovement(); // Ensure movement is stopped
-    // Exponential backoff delay
-    const delay = BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts);
-    console.log(`Scheduling reconnection attempt ${reconnectAttempts + 1} in ${delay / 1000} seconds...`);
-    reconnectTimeout = setTimeout(createBot, delay);
-}
-
-// --- Automatic Movement Logic ---
+// --- Automatic Movement Logic (from previous turns) ---
 function stopMovement() {
     clearTimeout(movementInterval); // Clear any pending randomMove calls
     movementInterval = null; // Clear the interval ID
@@ -238,3 +215,4 @@ function randomMove() {
 
 // Start the bot for the first time
 createBot();
+
