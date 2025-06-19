@@ -8,7 +8,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai'); // Re-import Go
 // === CONFIGURATION ===
 // Bot config loaded from environment variables or uses defaults
 const BOT_USERNAME = process.env.BOT_USERNAME || "AI"; // Any name, change as you wish
-const SERVER_IP = process.env.SERVER_IP || "Nerddddsmp.aternos.me";
+const SERVER_IP = process.env.SERVER_IP || "anothernerd.aternos.me";
 const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 25565; // Default Minecraft port, can be overridden by env
 const MC_VERSION = process.env.MC_VERSION || false; // Set to false for auto-detect
 
