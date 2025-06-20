@@ -13,7 +13,7 @@ function createBot() {
     host,
     port,
     username,
-    version: false
+    version: 1.21.6
   });
 
   bot.loadPlugin(pathfinder);
